@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AB Studio - Gestion Clients</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body.dark-mode { background-color: #121212; color: white; }
+    .dark-mode .card, .dark-mode .modal-content { background-color: #1e1e1e; color: white; }
+    .dark-mode .table { color: white; }
+  </style>
+</head>
+<body class="bg-light">
+    <div class="container py-4">
+      <div class="d-flex justify-content-between align-items-center flex-wrap mb-4">
+        <h1 class="h3 mb-3">Gestion des Clients - AB Studio</h1>
+        
+        <!-- Menu déroulant -->
+        <div class="dropdown mb-3">
+          <button class="btn btn-primary dropdown-toggle" type="button" id="menuOptions" data-bs-toggle="dropdown" aria-expanded="false">
+            ⚙️ Options
+          </button>
+          <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="menuOptions">
+            <li><a class="dropdown-item" href="#" onclick="exportCSVTemplate()">📤 Télécharger Modèle CSV</a></li>
+            <li><a class="dropdown-item" href="#" onclick="exportToCSV()">📁 Exporter les Données (CSV)</a></li>
+            <li>
+              <label class="dropdown-item" for="csvInput">📥 Importer un Fichier CSV</label>
+              <input type="file" id="csvInput" accept=".csv" class="d-none" onchange="importFromCSV()" />
+            </li>
+            <li><a class="dropdown-item" href="#" onclick="toggleDarkMode()">🌙 Mode Sombre</a></li>
+            <li><hr class="dropdown-divider"></li>
+            <li><a class="dropdown-item text-danger" href="#" onclick="resetData()">🗑️ Réinitialiser les Données</a></li>
+          </ul>
+        </div>
+      </div>
+  
+
+    <form id="clientForm" class="row g-3">
+      <div class="col-md-4">
+        <input required type="text" class="form-control" id="nom" placeholder="Nom complet">
+      </div>
+      <div class="col-md-2">
+        <input required type="date" class="form-control" id="date">
+      </div>
+      <div class="col-md-2">
+        <input required type="tel" class="form-control" id="tel" placeholder="Téléphone">
+      </div>
+      <div class="col-md-2">
+        <input required type="email" class="form-control" id="email" placeholder="Email">
+      </div>
+      <div class="col-md-2">
+        <input required type="number" class="form-control" id="montant" placeholder="Montant (HTG)">
+      </div>
+      <div class="col-12 text-end">
+        <button type="submit" class="btn btn-primary">Ajouter</button>
+      </div>
+    </form>
+
+    <hr>
+
+    <div class="row mb-4">
+      <div class="col-md-4">
+        <div class="card text-bg-light">
+          <div class="card-body">
+            <h5 class="card-title">Revenu Hebdomadaire</h5>
+            <p id="revenuSemaine" class="card-text fw-bold">0 HTG</p>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="card text-bg-light">
+          <div class="card-body">
+            <h5 class="card-title">Revenu Mensuel</h5>
+            <p id="revenuMois" class="card-text fw-bold">0 HTG</p>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="card text-bg-light">
+          <div class="card-body">
+            <h5 class="card-title">Revenu Annuel</h5>
+            <p id="revenuAnnee" class="card-text fw-bold">0 HTG</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <canvas id="revenuChart" height="100"></canvas>
+
+    <div class="my-4">
+      <input class="form-control mb-3" type="text" id="searchInput" placeholder="🔍 Rechercher par nom ou email...">
+      <div class="table-responsive">
+        <table class="table table-bordered table-hover" id="clientTable">
+          <thead>
+            <tr>
+              <th onclick="sortTable(0)">Nom</th>
+              <th>Date</th>
+              <th>Téléphone</th>
+              <th>Email</th>
+              <th>Montant (HTG)</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div class="position-fixed bottom-0 end-0 p-3">
+    <div id="toast" class="toast" role="alert" data-bs-delay="3000">
+      <div class="toast-body"></div>
+    </div>
+  </div>
+
+  <script>
+    let clients = JSON.parse(localStorage.getItem("clients") || "[]");
+
+    document.getElementById("clientForm").addEventListener("submit", function(e) {
+      e.preventDefault();
+      const nom = document.getElementById("nom").value;
+      const date = document.getElementById("date").value;
+      const tel = document.getElementById("tel").value;
+      const email = document.getElementById("email").value;
+      const montant = parseFloat(document.getElementById("montant").value);
+      clients.push({ nom, date, tel, email, montant });
+      localStorage.setItem("clients", JSON.stringify(clients));
+      this.reset();
+      afficherClients();
+      showToast("Client ajouté avec succès ✔️");
+    });
+
+    function afficherClients() {
+      const tbody = document.querySelector("#clientTable tbody");
+      tbody.innerHTML = "";
+      clients.forEach((c, i) => {
+        const row = document.createElement("tr");
+        row.innerHTML = `
+          <td>${c.nom}</td>
+          <td>${c.date}</td>
+          <td>${c.tel}</td>
+          <td>${c.email}</td>
+          <td>${c.montant.toFixed(2)} HTG</td>
+          <td>
+            <button class="btn btn-sm btn-warning me-1" onclick="modifierClient(${i})">✏️</button>
+            <button class="btn btn-sm btn-danger" onclick="supprimerClient(${i})">🗑️</button>
+          </td>`;
+        tbody.appendChild(row);
+      });
+      calculerRevenus();
+      updateChart();
+    }
+
+    function supprimerClient(index) {
+      if (confirm("Supprimer ce client ?")) {
+        clients.splice(index, 1);
+        localStorage.setItem("clients", JSON.stringify(clients));
+        afficherClients();
+        showToast("Client supprimé 🗑️");
+      }
+    }
+
+    function exportCSVTemplate() {
+  const headers = ["nom", "date", "telephone", "email", "montant"];
+  const exampleRow = ["Jean Dupont", "2025-04-15", "33990011", "jean@example.com", "2500"];
+
+  const csvContent = [headers.join(","), exampleRow.join(",")].join("\n");
+
+  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+
+  const link = document.createElement("a");
+  link.setAttribute("href", url);
+  link.setAttribute("download", "modele_clients_abstudio.csv");
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
+
+    function modifierClient(index) {
+      const c = clients[index];
+      document.getElementById("nom").value = c.nom;
+      document.getElementById("date").value = c.date;
+      document.getElementById("tel").value = c.tel;
+      document.getElementById("email").value = c.email;
+      document.getElementById("montant").value = c.montant;
+      supprimerClient(index);
+    }
+
+    function calculerRevenus() {
+      const now = new Date();
+      let semaine = 0, mois = 0, annee = 0;
+      clients.forEach(c => {
+        const d = new Date(c.date);
+        const montant = parseFloat(c.montant);
+        if (d.getFullYear() === now.getFullYear()) annee += montant;
+        if (d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()) mois += montant;
+        const diff = (now - d) / (1000 * 60 * 60 * 24);
+        if (diff <= 7) semaine += montant;
+      });
+      document.getElementById("revenuSemaine").textContent = `${semaine.toFixed(2)} HTG`;
+      document.getElementById("revenuMois").textContent = `${mois.toFixed(2)} HTG`;
+      document.getElementById("revenuAnnee").textContent = `${annee.toFixed(2)} HTG`;
+    }
+
+    function showToast(msg) {
+      document.querySelector("#toast .toast-body").textContent = msg;
+      const toast = new bootstrap.Toast(document.getElementById("toast"));
+      toast.show();
+    }
+
+    function toggleDarkMode() {
+      document.body.classList.toggle("dark-mode");
+    }
+
+    function exportToCSV() {
+      const csv = ["Nom,Date,Téléphone,Email,Montant"];
+      clients.forEach(c => {
+        csv.push(`${c.nom},${c.date},${c.tel},${c.email},${c.montant}`);
+      });
+      const blob = new Blob([csv.join("\n")], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "clients-abstudio.csv";
+      a.click();
+    }
+
+    function resetData() {
+      if (confirm("Effacer toutes les données ?")) {
+        localStorage.removeItem("clients");
+        clients = [];
+        afficherClients();
+        showToast("Données effacées 🗑️");
+      }
+    }
+
+    function sortTable(n) {
+      clients.sort((a, b) => a.nom.localeCompare(b.nom));
+      afficherClients();
+    }
+
+    document.getElementById("searchInput").addEventListener("input", function() {
+      const value = this.value.toLowerCase();
+      document.querySelectorAll("#clientTable tbody tr").forEach(row => {
+        row.style.display = row.textContent.toLowerCase().includes(value) ? "" : "none";
+      });
+    });
+
+    let chart;
+    function updateChart() {
+      const moisLabels = [...Array(12).keys()].map(m => new Date(0, m).toLocaleString('fr-FR', { month: 'short' }));
+      const data = Array(12).fill(0);
+      clients.forEach(c => {
+        const d = new Date(c.date);
+        if (d.getFullYear() === new Date().getFullYear()) {
+          data[d.getMonth()] += parseFloat(c.montant);
+        }
+      });
+      if (chart) chart.destroy();
+      chart = new Chart(document.getElementById("revenuChart"), {
+        type: 'bar',
+        data: {
+          labels: moisLabels,
+          datasets: [{
+            label: "Revenu mensuel (HTG)",
+            data,
+            backgroundColor: '#007bff'
+          }]
+        }
+      });
+    }
+
+    function importFromCSV() {
+  const input = document.getElementById("csvInput");
+  const file = input.files[0];
+  if (!file) {
+    alert("Veuillez sélectionner un fichier CSV.");
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = function (e) {
+    const text = e.target.result;
+    const rows = text.trim().split("\n");
+    const headers = rows[0].split(",").map(h => h.trim().toLowerCase());
+
+    // Vérifiez que le CSV contient les bonnes colonnes
+    const requiredFields = ["nom", "date", "telephone", "email", "montant"];
+    const missingFields = requiredFields.filter(field => !headers.includes(field));
+    if (missingFields.length > 0) {
+      alert("Colonnes manquantes dans le fichier : " + missingFields.join(", "));
+      return;
+    }
+
+    const newClients = rows.slice(1).map(row => {
+      const values = row.split(",").map(v => v.trim());
+      const data = {};
+      headers.forEach((h, i) => data[h] = values[i]);
+      return {
+        nom: data.nom || "",
+        date: data.date || new Date().toISOString().slice(0, 10),
+        telephone: data.telephone || "",
+        email: data.email || "",
+        montant: parseFloat(data.montant) || 0
+      };
+    });
+
+    // Charger les anciens clients
+    const existingClients = JSON.parse(localStorage.getItem("clients") || "[]");
+
+    // Fusionner les données (vous pouvez adapter pour éviter les doublons)
+    const allClients = existingClients.concat(newClients);
+    localStorage.setItem("clients", JSON.stringify(allClients));
+    alert("Importation réussie !");
+    loadClients(); // Recharge l'affichage
+  };
+
+  reader.readAsText(file);
+}
+
+
+    afficherClients();
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
